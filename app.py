@@ -1,24 +1,15 @@
 import streamlit as st
 import pandas as pd
 from textblob import TextBlob
-from transformers import pipeline
 
 st.set_page_config(page_title="AI Bias Detection Chatbot", layout="wide")
 st.title("🧠 AI Bias Detection Live Chatbot")
-
-st.caption("Real-time chatbot with bias & sentiment analysis")
+st.caption("Live chatbot with bias & sentiment analysis (Responsible AI)")
 
 # Load dataset (optional – future use)
 df = pd.read_csv("bias_analysis_results.csv")
 
-# Load AI model
-@st.cache_resource
-def load_model():
-    return pipeline("text-generation", model="distilgpt2")
-
-generator = load_model()
-
-# Session state for chat
+# Session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -29,6 +20,9 @@ for msg in st.session_state.messages:
 # User input
 user_input = st.chat_input("Type your message here...")
 
+# ---------------------------
+# Bias analysis function
+# ---------------------------
 def analyze_bias(text):
     sentiment = TextBlob(text).sentiment.polarity
     length = len(text.split())
@@ -42,47 +36,73 @@ def analyze_bias(text):
 
     if sentiment < -0.3 or keyword_flag:
         flag = "⚠️ Potential Bias Detected"
-        reason = "Negative sentiment and/or generalized language detected."
+        reason = "Negative sentiment or generalized language detected."
     else:
         flag = "✅ Neutral"
         reason = "No strong bias indicators detected."
 
     return sentiment, length, flag, reason
 
+# ---------------------------
+# Sensitive topic detection
+# ---------------------------
+def is_sensitive(text):
+    keywords = [
+        "religion", "sikh", "hindu", "muslim",
+        "christian", "caste", "gender", "race"
+    ]
+    return any(k in text.lower() for k in keywords)
+
+# ---------------------------
+# Main logic
+# ---------------------------
 if user_input:
     # User message
-    st.session_state.messages.append({"role": "user", "content": user_input})
+    st.session_state.messages.append(
+        {"role": "user", "content": user_input}
+    )
     st.chat_message("user").write(user_input)
 
-    # AI response
-    ai_response = generator(
-        user_input,
-        max_length=80,
-        num_return_sequences=1
-    )[0]["generated_text"]
+    # Bias analysis ON USER INPUT
+    sentiment, length, flag, reason = analyze_bias(user_input)
 
-    # Bias analysis
-    sentiment, length, flag, reason = analyze_bias(ai_response)
+    # Controlled system response
+    if is_sensitive(user_input):
+        ai_response = (
+            "This statement relates to personal beliefs or identity. "
+            "Such topics should be discussed with respect and neutrality."
+        )
+    elif flag.startswith("⚠️"):
+        ai_response = (
+            "This statement may contain biased or generalized language. "
+            "Please consider rephrasing it in a more neutral way."
+        )
+    else:
+        ai_response = (
+            "No strong bias indicators detected. "
+            "The statement appears neutral."
+        )
 
     bot_reply = f"""
-🤖 **Chatbot Response**  
+🤖 **System Response**  
 {ai_response}
 
 ---
 🔍 **Bias Analysis**
 - Sentiment Score: {sentiment:.2f}
-- Response Length: {length} words
+- Text Length: {length} words
 - Bias Status: {flag}
 - Explanation: {reason}
 
 💡 *Highly emotional or generalized language may indicate bias.*
 """
 
-
-    st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+    st.session_state.messages.append(
+        {"role": "assistant", "content": bot_reply}
+    )
     st.chat_message("assistant").write(bot_reply)
 
-# Sidebar dashboard
+# Sidebar
 st.sidebar.header("📊 Quick Insights")
 st.sidebar.write("Live chatbot + bias detection")
 st.sidebar.write("Use-case: HR | Education | Ethics Training")
